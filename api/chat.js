@@ -1,22 +1,12 @@
-const fs = require('fs');
-const path = require('path');
+const { getContext }  = require('../lib/rag');
+const { getSupabase } = require('../lib/supabase');
 
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-
-function loadKnowledgeBase() {
-  const files = fs.readdirSync(UPLOADS_DIR).filter(f => f.endsWith('.md'));
-  return files.map(f => {
-    const content = fs.readFileSync(path.join(UPLOADS_DIR, f), 'utf8');
-    return `=== ${f} ===\n${content}`;
-  }).join('\n\n---\n\n');
-}
-
-function buildSystemPrompt(knowledgeBase) {
+function buildSystemPrompt(context) {
   return `당신은 AI Wedding Studio의 웨딩 AI 상담 어드바이저 '아이다(AIDA — AI Wedding Advisor)'입니다.
 따뜻하고 전문적이며, 친근하지만 신뢰감 있는 말투로 존댓말을 사용합니다.
 
 [지식 베이스 — 이 내용만을 근거로 답변하세요]
-${knowledgeBase}
+${context}
 
 [답변 규칙]
 1. 자기소개·대화형 질문("이름이 뭐야", "누구야" 등): 챗봇 이름(아이다)과 역할을 자연스럽게 소개합니다.
@@ -28,51 +18,56 @@ ${knowledgeBase}
 7. 이모지는 적절하게 1~2개만 사용합니다.`;
 }
 
+// best-effort 대화 로그 저장
+async function logChat(question, answer, sources) {
+  try {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    await supabase.from('chat_logs').insert({ question, answer, sources });
+  } catch (err) {
+    console.warn('[chat_log] 저장 실패 (무시):', err.message);
+  }
+}
+
 module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
-    return;
-  }
-
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.status(204).end(); return; }
+  if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   try {
     const { messages } = req.body;
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+    const question = lastUser?.content || '';
 
-    const knowledgeBase = loadKnowledgeBase();
-    const systemPrompt = buildSystemPrompt(knowledgeBase);
+    const { context, sources } = await getContext(question);
+    const systemPrompt = buildSystemPrompt(context);
 
     const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type':  'application/json',
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gpt-5.4-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages,
-        ],
-        max_completion_tokens: 800,
-        temperature: 0.7,
+        model:                  'gpt-5.4-mini',
+        messages:               [{ role: 'system', content: systemPrompt }, ...messages],
+        max_completion_tokens:  800,
+        temperature:            0.7,
       }),
     });
 
     const data = await apiRes.json();
+    if (!apiRes.ok) throw new Error(data.error?.message || 'OpenAI API 오류');
 
-    if (!apiRes.ok) {
-      throw new Error(data.error?.message || 'OpenAI API 오류');
-    }
+    const reply = data.choices[0].message.content;
 
-    res.status(200).json({ reply: data.choices[0].message.content });
+    // best-effort 로그 (응답에 영향 없음)
+    logChat(question, reply, sources);
+
+    res.status(200).json({ reply });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

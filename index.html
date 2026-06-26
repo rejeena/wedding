@@ -272,10 +272,35 @@
         <div style="font:500 12px Inter,sans-serif; letter-spacing:2.5px; text-transform:uppercase; color:rgba(250,247,244,.78)">Start your story</div>
         <h2 style="margin:18px auto 0; max-width:640px; font:400 clamp(30px,4.6vw,52px)/1.2 'Noto Serif KR',serif; letter-spacing:-.5px; color:#FAF7F4">지금, 당신의 웨딩 이야기를<br>시작하세요</h2>
         <p style="margin:22px auto 0; max-width:480px; font:400 17px/1.8 Pretendard,sans-serif; color:rgba(250,247,244,.9)">상담은 무료입니다. 원하시는 스타일과 예산을 알려주시면, 최적의 방법을 제안해 드리겠습니다.</p>
-        <div style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:38px">
-          <a href="#aida" style="display:inline-flex; align-items:center; justify-content:center; padding:16px 36px; background:#FAF7F4; color:#2C2C2C; font:500 15px Pretendard,sans-serif; border-radius:3px; text-decoration:none; transition:transform .3s ease, box-shadow .3s ease" style-hover="transform:translateY(-2px); box-shadow:0 12px 30px rgba(26,26,26,.18)">무료 상담 신청</a>
-          <a href="#portfolio" style="display:inline-flex; align-items:center; justify-content:center; padding:16px 36px; background:transparent; color:#FAF7F4; font:500 15px Pretendard,sans-serif; border:1px solid rgba(250,247,244,.55); border-radius:3px; text-decoration:none; transition:all .3s ease" style-hover="background:rgba(250,247,244,.12); border-color:#FAF7F4">포트폴리오 보기</a>
-        </div>
+
+        <sc-if value="{{ lead.done }}">
+          <div style="margin-top:38px; padding:28px 32px; background:rgba(250,247,244,.18); border-radius:10px; border:1px solid rgba(250,247,244,.35); text-align:center">
+            <div style="font:400 32px 'Cormorant Garamond',serif; color:#FAF7F4; margin-bottom:8px">✦</div>
+            <div style="font:600 18px Pretendard,sans-serif; color:#FAF7F4">신청이 완료되었습니다!</div>
+            <div style="font:400 15px/1.7 Pretendard,sans-serif; color:rgba(250,247,244,.85); margin-top:8px">빠른 시일 내에 연락드리겠습니다.</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ !lead.done }}">
+          <div style="margin-top:38px; max-width:500px; margin-left:auto; margin-right:auto">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px">
+              <input type="text" value="{{ lead.name }}" onInput="{{ lead.onName }}" placeholder="이름 *" style="padding:13px 16px; border:1px solid rgba(250,247,244,.35); border-radius:6px; background:rgba(250,247,244,.12); color:#FAF7F4; font:400 14px Pretendard,sans-serif; outline:none" style-focus="border-color:rgba(250,247,244,.8)">
+              <input type="tel" value="{{ lead.phone }}" onInput="{{ lead.onPhone }}" placeholder="연락처 *" style="padding:13px 16px; border:1px solid rgba(250,247,244,.35); border-radius:6px; background:rgba(250,247,244,.12); color:#FAF7F4; font:400 14px Pretendard,sans-serif; outline:none" style-focus="border-color:rgba(250,247,244,.8)">
+            </div>
+            <sc-raw-textarea value="{{ lead.message }}" onInput="{{ lead.onMessage }}" placeholder="상담 내용 (선택)" rows="3" style="width:100%; padding:13px 16px; border:1px solid rgba(250,247,244,.35); border-radius:6px; background:rgba(250,247,244,.12); color:#FAF7F4; font:400 14px/1.6 Pretendard,sans-serif; outline:none; resize:none; box-sizing:border-box; margin-bottom:12px" style-focus="border-color:rgba(250,247,244,.8)"></sc-raw-textarea>
+
+            <sc-if value="{{ lead.sending }}">
+              <button disabled style="width:100%; padding:15px; background:rgba(250,247,244,.35); color:#FAF7F4; font:500 15px Pretendard,sans-serif; border:none; border-radius:6px; cursor:not-allowed">전송 중...</button>
+            </sc-if>
+            <sc-if value="{{ !lead.sending }}">
+              <button type="button" onClick="{{ lead.onSubmit }}" style="width:100%; padding:15px; background:#FAF7F4; color:#2C2C2C; font:500 15px Pretendard,sans-serif; border:none; border-radius:6px; cursor:pointer; transition:transform .2s, box-shadow .2s" style-hover="transform:translateY(-2px); box-shadow:0 8px 24px rgba(26,26,26,.2)">무료 상담 신청하기</button>
+            </sc-if>
+
+            <sc-if value="{{ lead.error }}">
+              <div style="margin-top:10px; font:400 13px Pretendard,sans-serif; color:rgba(250,247,244,.8); text-align:center">오류가 발생했습니다. 잠시 후 다시 시도해 주세요.</div>
+            </sc-if>
+          </div>
+        </sc-if>
       </div>
     </div>
   </section>
@@ -335,6 +360,8 @@ class Component extends DCLogic {
     openFaq: 0,
     input: '',
     typing: false,
+    leadName: '', leadPhone: '', leadMessage: '',
+    leadSending: false, leadDone: false, leadError: false,
     messages: [
       { role: 'ai', text: '안녕하세요, AI 웨딩 어드바이저 아이다예요 :)\n어떤 분위기의 웨딩을 꿈꾸고 계신가요? 편하게 말씀해 주시면 딱 맞는 스타일을 추천해 드릴게요.' }
     ]
@@ -390,6 +417,25 @@ class Component extends DCLogic {
   setCat = (c)=> this.setState({ activeCat:c });
   toggleFaq = (i)=> this.setState(s=>({ openFaq: s.openFaq===i ? -1 : i }));
 
+  onLeadName    = e => this.setState({ leadName:    e.target.value });
+  onLeadPhone   = e => this.setState({ leadPhone:   e.target.value });
+  onLeadMessage = e => this.setState({ leadMessage: e.target.value });
+  submitLead = async () => {
+    const { leadName, leadPhone, leadMessage } = this.state;
+    if (!leadName.trim() || !leadPhone.trim()) return;
+    this.setState({ leadSending: true, leadError: false });
+    try {
+      const res = await fetch('/api/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: leadName, phone: leadPhone, message: leadMessage }),
+      });
+      if (res.ok) this.setState({ leadDone: true, leadName: '', leadPhone: '', leadMessage: '' });
+      else        this.setState({ leadError: true });
+    } catch { this.setState({ leadError: true }); }
+    this.setState({ leadSending: false });
+  };
+
   componentDidMount(){ this.applyTheme(); this.setupReveal(); }
   componentDidUpdate(){ this.applyTheme(); }
   applyTheme(){
@@ -401,7 +447,8 @@ class Component extends DCLogic {
   setupReveal(){ /* reveal handled by CSS; content visible by default */ }
 
   renderVals(){
-    const { activeCat, openFaq, input, typing, messages } = this.state;
+    const { activeCat, openFaq, input, typing, messages,
+            leadName, leadPhone, leadMessage, leadSending, leadDone, leadError } = this.state;
     const base='padding:10px 22px; border-radius:999px; cursor:pointer; white-space:nowrap; font:500 14px Inter,Pretendard,sans-serif; transition:all .3s ease;';
     const cats=this.cats.map(c=>({ name:c, onClick:()=>this.setCat(c),
       style: c===activeCat ? base+' border:1px solid transparent; background:var(--accent-dark,#B48B8B); color:#FAF7F4' : base+' border:1px solid rgba(44,44,44,.14); background:transparent; color:#8C8C8C' }));
@@ -413,7 +460,13 @@ class Component extends DCLogic {
     const faqs=this.faqs.map((f,i)=>({ q:f.q, a:f.a, onClick:()=>this.toggleFaq(i), sign: i===openFaq?'\u2212':'+',
       bodyStyle: i===openFaq ? 'max-height:460px; opacity:1; overflow:hidden; transition:max-height .55s ease, opacity .5s ease, padding .4s ease; padding:0 0 24px' : 'max-height:0; opacity:0; overflow:hidden; transition:max-height .45s ease, opacity .3s ease, padding .4s ease; padding:0' }));
     const sugg=this.suggested.map(s=>({ text:s, onClick:()=>this.ask(s) }));
-    return { cats, items, faqs, sugg, messages:msgs, input, typing, onInput:this.onInput, onKey:this.onKey, send:this.send };
+    const lead = {
+      name: leadName, phone: leadPhone, message: leadMessage,
+      sending: leadSending, done: leadDone, error: leadError,
+      onName: this.onLeadName, onPhone: this.onLeadPhone, onMessage: this.onLeadMessage,
+      onSubmit: this.submitLead,
+    };
+    return { cats, items, faqs, sugg, messages:msgs, input, typing, onInput:this.onInput, onKey:this.onKey, send:this.send, lead };
   }
 }
 </script>
